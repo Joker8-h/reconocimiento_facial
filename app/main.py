@@ -5,8 +5,6 @@ from app.models import User
 from app.utils import image_to_embedding, upload_image_to_cloudinary, url_to_embedding
 import face_recognition
 from contextlib import contextmanager
-
-# Base.metadata.create_all(bind=engine) # Comentado para producción
 app = FastAPI()
 
 # Configurar CORS
