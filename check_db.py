@@ -8,8 +8,7 @@ load_dotenv()
 databases = ["bd_compartido", "proyectoacceso", "autentificacion", "moviflex"]
 
 user = "root"
-password = "rootpassword" # I need to find the password used.
-# From the previous files, it seems to be: 1118023359AAPV
+password = "rootpassword" 
 
 password = "1118023359AAPV"
 host = "localhost"
