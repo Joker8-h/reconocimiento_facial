@@ -1,8 +1,10 @@
-from fastapi import FastAPI, HTTPException, Form
+from fastapi import FastAPI, HTTPException, Form, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine, SessionLocal
 from app.models import User
 from app.utils import image_to_embedding, upload_image_to_cloudinary, url_to_embedding
+from pydantic import BaseModel
+from typing import Optional
 import face_recognition
 from contextlib import contextmanager
 app = FastAPI()
@@ -24,8 +26,35 @@ def get_db():
     finally:
         db.close()
 
+class RegisterModel(BaseModel):
+    nombre: str
+    image: Optional[str] = None
+    imageUrl: Optional[str] = None
+
+class VerifyModel(BaseModel):
+    image: Optional[str] = None
+    imageUrl: Optional[str] = None
+
 @app.post("/register-face")
-def register_face(nombre: str = Form(...), image: str = Form(None), imageUrl: str = Form(None)):
+async def register_face(
+    request: Request,
+    nombre: Optional[str] = Form(None),
+    image: Optional[str] = Form(None),
+    imageUrl: Optional[str] = Form(None)
+):
+    # Detectar si es JSON o Form
+    if request.headers.get("content-type") == "application/json":
+        try:
+            data = await request.json()
+            nombre = data.get("nombre")
+            image = data.get("image")
+            imageUrl = data.get("imageUrl")
+        except Exception:
+            pass
+
+    if not nombre:
+        raise HTTPException(status_code=400, detail="El nombre es obligatorio.")
+
     # 1. Obtener embedding (desde imagen o URL)
     if imageUrl:
         new_embedding = url_to_embedding(imageUrl)
@@ -75,7 +104,20 @@ def register_face(nombre: str = Form(...), image: str = Form(None), imageUrl: st
     return {"msg": "Usuario registrado exitosamente", "image_url": final_url}
 
 @app.post("/verify-face")
-def verify_face(image: str = Form(None), imageUrl: str = Form(None)):
+async def verify_face(
+    request: Request,
+    image: Optional[str] = Form(None),
+    imageUrl: Optional[str] = Form(None)
+):
+    # Detectar si es JSON o Form
+    if request.headers.get("content-type") == "application/json":
+        try:
+            data = await request.json()
+            image = data.get("image")
+            imageUrl = data.get("imageUrl")
+        except Exception:
+            pass
+
     # 1. Obtener embedding actual
     if imageUrl:
         current_embedding = url_to_embedding(imageUrl)
