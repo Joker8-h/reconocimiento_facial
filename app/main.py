@@ -35,7 +35,10 @@ def register_face(nombre: str = Form(...), image: str = Form(None), imageUrl: st
         raise HTTPException(status_code=400, detail="Debe proporcionar 'image' o 'imageUrl'.")
 
     if new_embedding is None:
-        raise HTTPException(status_code=400, detail="No se detectó rostro en la imagen proporcionada.")
+        if imageUrl:
+            raise HTTPException(status_code=400, detail="No se detectó un rostro claro en la URL proporcionada. Asegúrate de que la cara sea visible.")
+        else:
+            raise HTTPException(status_code=400, detail="No se detectó un rostro claro en la imagen enviada. Asegúrate de que la cara sea visible.")
     
     with get_db() as db:
         # 2. Verificar si el username ya existe
@@ -82,7 +85,10 @@ def verify_face(image: str = Form(None), imageUrl: str = Form(None)):
         raise HTTPException(status_code=400, detail="Debe proporcionar 'image' o 'imageUrl'.")
 
     if current_embedding is None:
-        raise HTTPException(status_code=400, detail="No se detectó rostro.")
+        if imageUrl:
+            raise HTTPException(status_code=400, detail="No se detectó un rostro en la URL para verificar.")
+        else:
+            raise HTTPException(status_code=400, detail="No se detectó un rostro en la imagen para verificar.")
     
     with get_db() as db:
         users = db.query(User).all()

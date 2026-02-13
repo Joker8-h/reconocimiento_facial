@@ -42,48 +42,62 @@ import requests
 
 def url_to_embedding(url: str):
     try:
-        print(f"Descargando imagen desde URL: {url}")
-        response = requests.get(url)
+        print(f"DEBUG: Descargando imagen desde URL: {url}")
+        response = requests.get(url, timeout=10)
         if response.status_code != 200:
-            print(f"Error al descargar imagen: Status {response.status_code}")
+            print(f"ERROR: No se pudo descargar imagen. Status: {response.status_code}")
             return None
         
         image_data = response.content
+        print(f"DEBUG: Imagen descargada. Tamaño: {len(image_data)} bytes")
+        
         image = Image.open(io.BytesIO(image_data))
         
-        # Convertir a RGB si es necesario (face_recognition prefiere RGB)
+        # Convertir a RGB si es necesario
         if image.mode != 'RGB':
+            print(f"DEBUG: Convirtiendo imagen de {image.mode} a RGB")
             image = image.convert('RGB')
             
         image_np = np.array(image)
+        print(f"DEBUG: Procesando face_recognition en imagen de {image_np.shape}")
 
         encodings = face_recognition.face_encodings(image_np)
         if not encodings:
-            print("No se encontró rostro en la imagen de la URL.")
+            print("WARNING: No se encontró ningún rostro claro en la imagen de la URL.")
             return None
+        
+        print("DEBUG: Rostro detectado exitosamente.")
         return encodings[0]
     except Exception as e:
-        print(f"Error al procesar imagen desde URL: {e}")
+        print(f"CRITICAL ERROR: Error al procesar imagen desde URL: {str(e)}")
         return None
 
 def image_to_embedding(base64_image: str):
     try:
+        print("DEBUG: Procesando imagen base64...")
         # Si la imagen tiene el prefijo data:image/..., sepáralo
         if ',' in base64_image:
             base64_image = base64_image.split(',')[1]
         
         image_data = base64.b64decode(base64_image)
+        print(f"DEBUG: Imagen decodificada. Tamaño: {len(image_data)} bytes")
+        
         image = Image.open(io.BytesIO(image_data))
         
         if image.mode != 'RGB':
+            print(f"DEBUG: Convirtiendo imagen de {image.mode} a RGB")
             image = image.convert('RGB')
             
         image_np = np.array(image)
+        print(f"DEBUG: Procesando face_recognition en imagen de {image_np.shape}")
 
         encodings = face_recognition.face_encodings(image_np)
         if not encodings:
+            print("WARNING: No se encontró ningún rostro claro en el base64.")
             return None
+            
+        print("DEBUG: Rostro detectado exitosamente.")
         return encodings[0]
     except Exception as e:
-        print(f"Error al procesar imagen: {e}")
+        print(f"CRITICAL ERROR: Error al procesar imagen base64: {str(e)}")
         return None
