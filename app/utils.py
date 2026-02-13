@@ -3,7 +3,7 @@ import numpy as np
 import base64
 import io
 import os
-from PIL import Image
+from PIL import Image, ImageOps
 import cloudinary
 import cloudinary.uploader
 from dotenv import load_dotenv
@@ -53,6 +53,9 @@ def url_to_embedding(url: str):
         
         image = Image.open(io.BytesIO(image_data))
         
+        # Corregir orientación EXIF (muy común en móviles)
+        image = ImageOps.exif_transpose(image)
+        
         # Convertir a RGB si es necesario
         if image.mode != 'RGB':
             print(f"DEBUG: Convirtiendo imagen de {image.mode} a RGB")
@@ -61,7 +64,14 @@ def url_to_embedding(url: str):
         image_np = np.array(image)
         print(f"DEBUG: Procesando face_recognition en imagen de {image_np.shape}")
 
+        # Intentar detección normal
         encodings = face_recognition.face_encodings(image_np)
+        
+        # Si no detecta, intentar con upsampling (más lento pero detecta caras pequeñas)
+        if not encodings:
+            print("DEBUG: No se detectó rostro en pase inicial. Reintentando con upsampling...")
+            encodings = face_recognition.face_encodings(image_np, num_jitters=1)
+        
         if not encodings:
             print("WARNING: No se encontró ningún rostro claro en la imagen de la URL.")
             return None
@@ -84,6 +94,9 @@ def image_to_embedding(base64_image: str):
         
         image = Image.open(io.BytesIO(image_data))
         
+        # Corregir orientación EXIF
+        image = ImageOps.exif_transpose(image)
+        
         if image.mode != 'RGB':
             print(f"DEBUG: Convirtiendo imagen de {image.mode} a RGB")
             image = image.convert('RGB')
@@ -91,7 +104,14 @@ def image_to_embedding(base64_image: str):
         image_np = np.array(image)
         print(f"DEBUG: Procesando face_recognition en imagen de {image_np.shape}")
 
+        # Intentar detección normal
         encodings = face_recognition.face_encodings(image_np)
+        
+        # Si no detecta, intentar con upsampling
+        if not encodings:
+            print("DEBUG: Reintentando base64 con upsampling...")
+            encodings = face_recognition.face_encodings(image_np, num_jitters=1)
+
         if not encodings:
             print("WARNING: No se encontró ningún rostro claro en el base64.")
             return None
