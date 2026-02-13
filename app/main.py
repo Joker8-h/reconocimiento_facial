@@ -70,13 +70,16 @@ async def register_face(
             raise HTTPException(status_code=400, detail="No se detectó un rostro claro en la imagen enviada. Asegúrate de que la cara sea visible.")
     
     with get_db() as db:
-        # 2. Verificar si el username ya existe
-        if db.query(User).filter(User.nombre == nombre).first():
-            raise HTTPException(status_code=400, detail="El nombre de usuario ya está registrado.")
+        # Buscar si el usuario ya fue creado por Node
+        existing_user = db.query(User).filter(User.nombre == nombre).first()
         
-        # 3. VERIFICACIÓN DE DUPLICADOS
+        # 3. VERIFICACIÓN DE DUPLICADOS (Comparar con OTROS usuarios)
         users = db.query(User).all()
         for user in users:
+            # Si es el mismo usuario que estamos registrando/actualizando, saltar comparación
+            if existing_user and user.idUsuarios == existing_user.idUsuarios:
+                continue
+                
             if not user.fotoPerfil:
                 continue
             
@@ -86,7 +89,7 @@ async def register_face(
                 if matches[0]:
                     raise HTTPException(
                         status_code=400, 
-                        detail=f"Error: Este rostro ya está registrado bajo el usuario '{user.nombre}'."
+                        detail=f"Error: Este rostro ya está registrado bajo otro usuario ('{user.nombre}')."
                     )
 
         # 4. Determinar la URL final
@@ -96,12 +99,20 @@ async def register_face(
             if not final_url:
                 raise HTTPException(status_code=500, detail="Error al subir la imagen a Cloudinary.")
             
-        # 5. Guardar en base de datos de Python
-        user = User(nombre=nombre, fotoPerfil=final_url)
-        db.add(user)
-        db.commit()
+        # 5. Guardar o Actualizar en la DB compartida
+        if existing_user:
+            # Si Node ya lo creó, solo aseguramos que tenga la foto actualizada
+            existing_user.fotoPerfil = final_url
+            db.commit()
+            msg = "Rostro actualizado exitosamente para el usuario existente"
+        else:
+            # Si por alguna razón no existe, intentamos crearlo (aunque puede fallar por falta de campos como email)
+            user = User(nombre=nombre, fotoPerfil=final_url)
+            db.add(user)
+            db.commit()
+            msg = "Usuario y rostro registrados exitosamente"
     
-    return {"msg": "Usuario registrado exitosamente", "image_url": final_url}
+    return {"msg": msg, "image_url": final_url}
 
 @app.post("/verify-face")
 async def verify_face(
