@@ -59,7 +59,7 @@ async def compare_faces(data: CompareModel):
         
         # Comparar rostros
         print("DEBUG: Comparando embeddings...")
-        matches = face_recognition.compare_faces([embedding1], embedding2, tolerance=0.6)
+        matches = face_recognition.compare_faces([embedding1], embedding2, tolerance=0.5)
         distance = face_recognition.face_distance([embedding1], embedding2)[0]
         
         print(f"DEBUG: Match: {matches[0]}, Distance: {distance}")
@@ -101,7 +101,7 @@ async def find_match(data: FindMatchModel):
             if candidate_embedding is None:
                 continue
                 
-            match = face_recognition.compare_faces([candidate_embedding], target_embedding, tolerance=0.55) # Un poco más estricto para duplicados
+            match = face_recognition.compare_faces([candidate_embedding], target_embedding, tolerance=0.5)
             if match[0]:
                 print(f"DEBUG: ¡Duplicado encontrado! Coincide con: {url}")
                 return {
