@@ -26,135 +26,52 @@ def get_db():
     finally:
         db.close()
 
-class RegisterModel(BaseModel):
-    nombre: str
-    image: Optional[str] = None
-    imageUrl: Optional[str] = None
+class CompareModel(BaseModel):
+    imageUrl1: str
+    imageUrl2: str
 
-class VerifyModel(BaseModel):
-    image: Optional[str] = None
-    imageUrl: Optional[str] = None
-
-@app.post("/register-face")
-async def register_face(
-    request: Request,
-    nombre: Optional[str] = Form(None),
-    image: Optional[str] = Form(None),
-    imageUrl: Optional[str] = Form(None)
-):
-    # Detectar si es JSON o Form
-    if request.headers.get("content-type") == "application/json":
-        try:
-            data = await request.json()
-            nombre = data.get("nombre")
-            image = data.get("image")
-            imageUrl = data.get("imageUrl")
-        except Exception:
-            pass
-
-    if not nombre:
-        raise HTTPException(status_code=400, detail="El nombre es obligatorio.")
-
-    # 1. Obtener embedding (desde imagen o URL)
-    if imageUrl:
-        new_embedding = url_to_embedding(imageUrl)
-    elif image:
-        new_embedding = image_to_embedding(image)
-    else:
-        raise HTTPException(status_code=400, detail="Debe proporcionar 'image' o 'imageUrl'.")
-
-    if new_embedding is None:
-        if imageUrl:
-            raise HTTPException(status_code=400, detail="No se detectó un rostro claro en la URL proporcionada. Asegúrate de que la cara sea visible.")
-        else:
-            raise HTTPException(status_code=400, detail="No se detectó un rostro claro en la imagen enviada. Asegúrate de que la cara sea visible.")
-    
-    with get_db() as db:
-        # Buscar si el usuario ya fue creado por Node
-        existing_user = db.query(User).filter(User.nombre == nombre).first()
+@app.post("/compare-faces")
+async def compare_faces(data: CompareModel):
+    """
+    Compara dos imágenes faciales desde URLs de Cloudinary.
+    Retorna si son la misma persona o no.
+    """
+    try:
+        print(f"DEBUG: Comparando URLs:")
+        print(f"  URL1: {data.imageUrl1}")
+        print(f"  URL2: {data.imageUrl2}")
         
-        # 3. VERIFICACIÓN DE DUPLICADOS (Comparar con OTROS usuarios)
-        users = db.query(User).all()
-        for user in users:
-            # Si es el mismo usuario que estamos registrando/actualizando, saltar comparación
-            if existing_user and user.idUsuarios == existing_user.idUsuarios:
-                continue
-                
-            if not user.fotoPerfil:
-                continue
-            
-            db_embedding = url_to_embedding(user.fotoPerfil)
-            if db_embedding is not None:
-                matches = face_recognition.compare_faces([db_embedding], new_embedding)
-                if matches[0]:
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"Error: Este rostro ya está registrado bajo otro usuario ('{user.nombre}')."
-                    )
-
-        # 4. Determinar la URL final
-        final_url = imageUrl
-        if not final_url and image:
-            final_url = upload_image_to_cloudinary(image)
-            if not final_url:
-                raise HTTPException(status_code=500, detail="Error al subir la imagen a Cloudinary.")
-            
-        # 5. Guardar o Actualizar en la DB compartida
-        if existing_user:
-            # Si Node ya lo creó, solo aseguramos que tenga la foto actualizada
-            existing_user.fotoPerfil = final_url
-            db.commit()
-            msg = "Rostro actualizado exitosamente para el usuario existente"
-        else:
-            # Si por alguna razón no existe, intentamos crearlo (aunque puede fallar por falta de campos como email)
-            user = User(nombre=nombre, fotoPerfil=final_url)
-            db.add(user)
-            db.commit()
-            msg = "Usuario y rostro registrados exitosamente"
-    
-    return {"msg": msg, "image_url": final_url}
-
-@app.post("/verify-face")
-async def verify_face(
-    request: Request,
-    image: Optional[str] = Form(None),
-    imageUrl: Optional[str] = Form(None)
-):
-    # Detectar si es JSON o Form
-    if request.headers.get("content-type") == "application/json":
-        try:
-            data = await request.json()
-            image = data.get("image")
-            imageUrl = data.get("imageUrl")
-        except Exception:
-            pass
-
-    # 1. Obtener embedding actual
-    if imageUrl:
-        current_embedding = url_to_embedding(imageUrl)
-    elif image:
-        current_embedding = image_to_embedding(image)
-    else:
-        raise HTTPException(status_code=400, detail="Debe proporcionar 'image' o 'imageUrl'.")
-
-    if current_embedding is None:
-        if imageUrl:
-            raise HTTPException(status_code=400, detail="No se detectó un rostro en la URL para verificar.")
-        else:
-            raise HTTPException(status_code=400, detail="No se detectó un rostro en la imagen para verificar.")
-    
-    with get_db() as db:
-        users = db.query(User).all()
-        for user in users:
-            if not user.fotoPerfil:
-                continue
-                
-            db_embedding = url_to_embedding(user.fotoPerfil)
-            if db_embedding is None:
-                continue
-                
-            matches = face_recognition.compare_faces([db_embedding], current_embedding)
-            if matches[0]:
-                return {"user_id": user.idUsuarios, "username": user.nombre}
-    
-    raise HTTPException(status_code=401, detail="Usuario no reconocido")
+        # Obtener embeddings de ambas imágenes
+        embedding1 = url_to_embedding(data.imageUrl1)
+        embedding2 = url_to_embedding(data.imageUrl2)
+        
+        if embedding1 is None:
+            raise HTTPException(
+                status_code=400, 
+                detail="No se detectó un rostro claro en la primera imagen (foto almacenada)."
+            )
+        
+        if embedding2 is None:
+            raise HTTPException(
+                status_code=400, 
+                detail="No se detectó un rostro claro en la segunda imagen (foto de login)."
+            )
+        
+        # Comparar rostros
+        print("DEBUG: Comparando embeddings...")
+        matches = face_recognition.compare_faces([embedding1], embedding2, tolerance=0.6)
+        distance = face_recognition.face_distance([embedding1], embedding2)[0]
+        
+        print(f"DEBUG: Match: {matches[0]}, Distance: {distance}")
+        
+        return {
+            "match": bool(matches[0]),
+            "distance": float(distance),
+            "message": "Rostros coinciden" if matches[0] else "Rostros no coinciden"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"CRITICAL ERROR en compare_faces: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al comparar rostros: {str(e)}")
