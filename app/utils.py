@@ -48,35 +48,30 @@ def url_to_embedding(url: str):
             print(f"ERROR: No se pudo descargar imagen. Status: {response.status_code}")
             return None
         
-        image_data = response.content
-        print(f"DEBUG: Imagen descargada. Tamaño: {len(image_data)} bytes")
-        
-        image = Image.open(io.BytesIO(image_data))
-        
-        # Corregir orientación EXIF (muy común en móviles)
+        image = Image.open(io.BytesIO(response.content))
         image = ImageOps.exif_transpose(image)
         
-        # Convertir a RGB si es necesario
         if image.mode != 'RGB':
-            print(f"DEBUG: Convirtiendo imagen de {image.mode} a RGB")
             image = image.convert('RGB')
             
+        # Redimensionar si es muy grande para mejorar velocidad y detección HOG
+        max_size = 1024
+        if max(image.size) > max_size:
+            print(f"DEBUG: Redimensionando imagen de {image.size} a {max_size}px max")
+            image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+            
         image_np = np.array(image)
-        print(f"DEBUG: Procesando face_recognition en imagen de {image_np.shape}")
-
-        # Intentar detección normal
-        encodings = face_recognition.face_encodings(image_np)
         
-        # Si no detecta, intentar con upsampling (más lento pero detecta caras pequeñas)
-        if not encodings:
-            print("DEBUG: No se detectó rostro en pase inicial. Reintentando con upsampling...")
-            encodings = face_recognition.face_encodings(image_np, num_jitters=1)
+        # Intentar detección con upsampling para caras pequeñas
+        face_locations = face_recognition.face_locations(image_np, number_of_times_to_upsample=1, model="hog")
         
-        if not encodings:
-            print("WARNING: No se encontró ningún rostro claro en la imagen de la URL.")
+        if not face_locations:
+            print("WARNING: No se encontró ningún rostro claro.")
             return None
         
-        print("DEBUG: Rostro detectado exitosamente.")
+        # Generar embedding con alta precisión
+        encodings = face_recognition.face_encodings(image_np, known_face_locations=face_locations, num_jitters=10)
+        
         return encodings[0]
     except Exception as e:
         print(f"CRITICAL ERROR: Error al procesar imagen desde URL: {str(e)}")
@@ -84,39 +79,31 @@ def url_to_embedding(url: str):
 
 def image_to_embedding(base64_image: str):
     try:
-        print("DEBUG: Procesando imagen base64...")
-        # Si la imagen tiene el prefijo data:image/..., sepáralo
         if ',' in base64_image:
             base64_image = base64_image.split(',')[1]
         
         image_data = base64.b64decode(base64_image)
-        print(f"DEBUG: Imagen decodificada. Tamaño: {len(image_data)} bytes")
-        
         image = Image.open(io.BytesIO(image_data))
-        
-        # Corregir orientación EXIF
         image = ImageOps.exif_transpose(image)
         
         if image.mode != 'RGB':
-            print(f"DEBUG: Convirtiendo imagen de {image.mode} a RGB")
             image = image.convert('RGB')
             
+        max_size = 1024
+        if max(image.size) > max_size:
+            print(f"DEBUG: Redimensionando imagen base64 de {image.size} a {max_size}px max")
+            image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+            
         image_np = np.array(image)
-        print(f"DEBUG: Procesando face_recognition en imagen de {image_np.shape}")
-
-        # Intentar detección normal
-        encodings = face_recognition.face_encodings(image_np)
         
-        # Si no detecta, intentar con upsampling
-        if not encodings:
-            print("DEBUG: Reintentando base64 con upsampling...")
-            encodings = face_recognition.face_encodings(image_np, num_jitters=1)
-
-        if not encodings:
+        # Intentar detección con upsampling
+        face_locations = face_recognition.face_locations(image_np, number_of_times_to_upsample=1, model="hog")
+        
+        if not face_locations:
             print("WARNING: No se encontró ningún rostro claro en el base64.")
             return None
             
-        print("DEBUG: Rostro detectado exitosamente.")
+        encodings = face_recognition.face_encodings(image_np, known_face_locations=face_locations, num_jitters=10)
         return encodings[0]
     except Exception as e:
         print(f"CRITICAL ERROR: Error al procesar imagen base64: {str(e)}")
