@@ -97,15 +97,22 @@ async def find_match(data: FindMatchModel):
         for url in data.candidateUrls:
             if not url: continue
             
+            print(f"DEBUG: Revisando candidato: {url}")
             candidate_embedding = url_to_embedding(url)
             if candidate_embedding is None:
+                print(f"DEBUG: No se pudo generar embedding para: {url}")
                 continue
                 
             match = face_recognition.compare_faces([candidate_embedding], target_embedding, tolerance=0.5)
+            distance = face_recognition.face_distance([candidate_embedding], target_embedding)[0]
+            
+            print(f"DEBUG: Distancia: {distance} | Match: {match[0]}")
+            
             if match[0]:
                 print(f"DEBUG: ¡Duplicado encontrado! Coincide con: {url}")
                 return {
                     "matchFound": True,
+                    "matchDistance": float(distance),
                     "matchedUrl": url,
                     "message": "Este rostro ya está registrado."
                 }
