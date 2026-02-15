@@ -75,3 +75,46 @@ async def compare_faces(data: CompareModel):
     except Exception as e:
         print(f"CRITICAL ERROR en compare_faces: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error al comparar rostros: {str(e)}")
+
+class FindMatchModel(BaseModel):
+    targetUrl: str
+    candidateUrls: list[str]
+
+@app.post("/find-match")
+async def find_match(data: FindMatchModel):
+    """
+    Busca si el targetUrl coincide con alguno de los candidateUrls.
+    Detiene la búsqueda en el primer match encontrado (short-circuit).
+    """
+    try:
+        print(f"DEBUG: Buscando duplicados para: {data.targetUrl}")
+        print(f"DEBUG: Candidatos a revisar: {len(data.candidateUrls)}")
+
+        target_embedding = url_to_embedding(data.targetUrl)
+        if target_embedding is None:
+            raise HTTPException(status_code=400, detail="No se detectó un rostro en la imagen proporcionada.")
+
+        for url in data.candidateUrls:
+            if not url: continue
+            
+            candidate_embedding = url_to_embedding(url)
+            if candidate_embedding is None:
+                continue
+                
+            match = face_recognition.compare_faces([candidate_embedding], target_embedding, tolerance=0.55) # Un poco más estricto para duplicados
+            if match[0]:
+                print(f"DEBUG: ¡Duplicado encontrado! Coincide con: {url}")
+                return {
+                    "matchFound": True,
+                    "matchedUrl": url,
+                    "message": "Este rostro ya está registrado."
+                }
+
+        return {
+            "matchFound": False,
+            "message": "No se encontraron duplicados."
+        }
+
+    except Exception as e:
+        print(f"CRITICAL ERROR en find-match: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al buscar duplicados: {str(e)}")
